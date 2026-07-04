@@ -1,0 +1,41 @@
+# SpaLineage-OT Configuration Parameters
+
+# 1. Optimal Transport (OT) Solver Parameters
+ot_params:
+  # Entropic regularization parameter (epsilon) for Sinkhorn
+  epsilon: 0.05
+  # Fused Gromov-Wasserstein trade-off parameter (alpha)
+  # alpha = 0: pure expression cost; alpha = 1: pure spatial topology cost
+  alpha: 0.3
+  # Maximum iterations for Sinkhorn/GW solver
+  max_iterations: 1000
+  # Tolerance for Sinkhorn convergence
+  tolerance: 1e-4
+
+# 2. Velocity-Guided Cost (VG-OT) Parameters
+vg_params:
+  # Weight factor (beta) for velocity drift penalty
+  beta: 0.5
+  # Small stabilization constant for vector norms
+  eta: 1e-6
+
+# 3. Geodesic Impedance (G-FGW) Parameters
+geodesic_params:
+  # Sensitivity coefficient (gamma) for morphologic barrier impedance mapping
+  # Larger values create higher transport penalties through dense DAPI/Collagen zones
+  gamma: 2.0
+  # Baseline grid scale for Delaunay graph distance scaling
+  delaunay_max_edge_length: 50.0
+
+# 4. Schrödinger Bridge Flow Matching (SBFM) Parameters
+flow_matching_params:
+  # Hidden dimensions for the Neural ODE drift MLP
+  hidden_dims: [128, 128, 64]
+  # Training learning rate
+  learning_rate: 1e-3
+  # Batch size for matching coordinates
+  batch_size: 4096
+  # Number of training epochs for vector field network
+  epochs: 100
+  # ODE integration step size for trajectory simulation
+  step_size: 0.05

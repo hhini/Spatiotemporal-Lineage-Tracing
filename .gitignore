@@ -1,0 +1,14 @@
+# Ignore data files
+data/*.h5ad
+data/*.npy
+
+# Ignore Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore IDE files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
