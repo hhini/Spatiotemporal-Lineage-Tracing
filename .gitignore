@@ -7,8 +7,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Ignore IDE files
+# Ignore IDE and Tooling files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+.codegraph/
