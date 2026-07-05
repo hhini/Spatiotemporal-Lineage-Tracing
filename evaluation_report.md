@@ -82,6 +82,24 @@
 * **图片展示**：
   ![Figure 5: Hold-out Validation](file:///C:/Users/Administrator/.gemini/antigravity/brain/c27f2cd5-345a-4013-8e85-0f881f23bc36/fig5_validation.png)
 
+### 3.6 Figure 6: 时空发育轨迹时间序列演化图 (Time-lapse Evolution)
+* **学术作用**：连续呈现细胞在不同动力学时刻下的迁移与形态演变过程。
+* **画面内容**：分为 $t=0.0$, $t=0.33$, $t=0.67$, $t=1.0$ 四个子图，背景为胚胎全细胞分布（灰色），前景为按 E9.5 起始的背腹侧（Dorsal-Ventral）Y 轴坐标染色的细胞轨迹。清晰展示了细胞群在引力势能引导下沿着测地流形通道逐渐变形和迁移的连续动态。
+* **图片展示**：
+  ![Figure 6: Time-lapse Evolution](file:///C:/Users/Administrator/.gemini/antigravity/brain/c27f2cd5-345a-4013-8e85-0f881f23bc36/fig6_time_evolution.png)
+
+### 3.7 Figure 7: 均值漂移势能 guidance 引力场图 (Potential Field)
+* **学术作用**：直观揭示势能引导系统（Mean Shift Guidance）如何物理上约束细胞轨迹。
+* **画面内容**：背景为基于高斯核密度估计（KDE）得到的组织高密度轮廓（蓝色渐变），上层叠加了引力势能的负梯度向量场（橙色矢量箭头，指向高密度核心区域）。生动展示了偏离流形的细胞在每一步积分中如何受到物理约束力的拉扯拉回边界。
+* **图片展示**：
+  ![Figure 7: Potential Field Guidance](file:///C:/Users/Administrator/.gemini/antigravity/brain/c27f2cd5-345a-4013-8e85-0f881f23bc36/fig7_potential_field.png)
+
+### 3.8 Figure 8: 生物学向量方向一致性分布图 (RNA Velocity Alignment)
+* **学术作用**：在生物物理学机制层面上证明 Neural ODE 学到的动力学方向的正确性。
+* **画面内容**：展示了预测速度向量与实际单细胞 RNA 速度向量的余弦相似度（Cosine Similarity）概率密度曲线。对比了 SpaLineage-OT（显著集中于正值区间，平均相似度极高）、Moscot 以及 WOT 的随机/偏差分布，直接证明了物理正则化在方向预测上的高保真度。
+* **图片展示**：
+  ![Figure 8: Velocity Alignment](file:///C:/Users/Administrator/.gemini/antigravity/brain/c27f2cd5-345a-4013-8e85-0f881f23bc36/fig8_velocity_alignment.png)
+
 ---
 
 ## 4. 文献检索与本课题前沿学术定位
