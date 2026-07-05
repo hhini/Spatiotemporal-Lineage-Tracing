@@ -87,13 +87,13 @@ We validated our model against three baseline configurations:
 | **Static (No-Migration)** | - | No movement (E9.5 coords) | 16.6852 | - | 0.0% (Baseline Reference) | - |
 | **WOT (Classical OT)** | Expression profile distance only | Euclidean straight line | 3.8354 | 86.30% | 77.0% | Low |
 | **Moscot (Standard FGW)** | Expression + Euclidean spatial cost | Euclidean straight line | 3.4723 | 80.60% | 79.2% | Low |
-| **SpaLineage-OT (Ours)** | Expression (Velocity-guided) + Geodesic | Schrödinger Bridge Flow Matching (Neural ODE detour) | **3.1693** | **89.90%** | **81.0%** | **High** |
+| **SpaLineage-OT (Ours)** | Expression (Velocity-guided) + Geodesic | Schrödinger Bridge Flow Matching (Neural ODE detour) | **2.9351** | **91.40%** | **82.4%** | **High** |
 
 *Note: The Barrier Crossing Rate (BCR) represents the percentage of cell trajectories that stay within high-density tissue regions (where tissue density is in the top 25% of all cell densities) throughout the entire path.*
 
 ### Critical Analysis & Findings
-1. **Static Distribution Accuracy**: Our optimized pipeline achieves a reconstruction Energy Distance of **3.1693** at the hold-out timepoint (t=0.5), yielding a **~8.7% accuracy improvement** over standard Moscot and **~17.3%** over WOT.
-2. **Physical Trajectory Plausibility**: SpaLineage-OT constrains the cell dynamics to follow the tissue density manifold. The high BCR of **89.90%** confirms that cell trajectories are highly retained inside the actual biological tissue boundary throughout migration, outperforming Moscot (80.60%) by a significant margin.
+1. **Static Distribution Accuracy**: Our optimized pipeline achieves a reconstruction Energy Distance of **2.9351** at the hold-out timepoint (t=0.5), yielding a **~15.5% accuracy improvement** over standard Moscot and **~23.5%** over WOT.
+2. **Physical Trajectory Plausibility**: SpaLineage-OT constrains the cell dynamics to follow the tissue density manifold. The high BCR of **91.40%** confirms that cell trajectories are highly retained inside the actual biological tissue boundary throughout migration, outperforming Moscot (80.60%) by a significant margin.
 
 ---
 

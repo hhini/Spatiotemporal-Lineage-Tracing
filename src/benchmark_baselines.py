@@ -132,7 +132,7 @@ def run_benchmarking():
     # Integrate E9.5 cells to t=0.5 with Mean Shift potential force (using known endpoint tissue coordinates)
     print("  Integrating Neural ODE trajectories to t=0.5 with manifold potential guidance...")
     known_spatial = np.vstack([coords_e95, coords_e115])
-    potential_fn = get_mean_shift_potential_fn(known_spatial, sigma=50.0, eta=0.2)
+    potential_fn = get_mean_shift_potential_fn(known_spatial, sigma=30.0, eta=0.4)
     trajs = solve_ode_rk4(model, state_95, steps=10, potential_grad_fn=potential_fn)
     predicted_e105_states = trajs[5]  # Index 5 is t=0.5
     spalineage_pred_spatial = predicted_e105_states[:, -2:]

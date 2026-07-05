@@ -394,7 +394,7 @@ def plot_holdout_validation(adata, model_path, config_path, output_dir):
     print("[Viz] Integrating Neural ODE trajectories to intermediate time t=0.5 with potential force...")
     coord_115 = adata[adata.obs['timepoint'] == 'E11.5'].obsm['spatial']
     known_spatial = np.vstack([coord_95, coord_115])
-    potential_fn = get_mean_shift_potential_fn(known_spatial, sigma=50.0, eta=0.2)
+    potential_fn = get_mean_shift_potential_fn(known_spatial, sigma=30.0, eta=0.4)
     trajs = solve_ode_rk4(model, state_95, steps=10, potential_grad_fn=potential_fn) # shape: (11, n_cells, D)
     predicted_e105_states = trajs[5] # Index 5 corresponds to t = 0.5 (E10.5 prediction)
     predicted_spatial = predicted_e105_states[:, -2:]
@@ -433,7 +433,7 @@ def plot_holdout_validation(adata, model_path, config_path, output_dir):
     plt.close()
 
 if __name__ == "__main__":
-    brain_dir = r"C:\Users\Administrator\.gemini\antigravity\brain\16e92036-167e-4691-932b-d2a1ad158db7"
+    brain_dir = r"C:\Users\Administrator\.gemini\antigravity\brain\c27f2cd5-345a-4013-8e85-0f881f23bc36"
     if os.name == 'posix' and brain_dir.startswith("C:\\"):
         brain_dir = "/mnt/c/" + brain_dir[3:].replace("\\", "/")
         
