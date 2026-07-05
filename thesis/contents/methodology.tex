@@ -5,10 +5,19 @@
 
 在时空单细胞谱系追踪任务中，我们观测到一系列在时间点 $t \in \{t_0, t_1, \dots, t_T\}$ 处静态采样的空间转录组数据集。对于任意时间点 $t_k$，细胞集合表示为 $\mathcal{X}(t_k) = \{(x_i, y_i) \}_{i=1}^{N_k}$，其中 $x_i \in \mathbb{R}^2$（或 $\mathbb{R}^3$）表示细胞的空间坐标，$y_i \in \mathbb{R}^D$ 表示细胞的基因表达特征（例如前 50 维 PCA 缩放值）。此外，通过转录动力学分析，我们还可以计算出每个细胞的 RNA 速度矢量 $\vec{V}_i \in \mathbb{R}^2$。
 
-本章将详细介绍 \textbf{SpaLineage-OT} 的数学架构，包含黎曼测地线几何约束、非对称速度引导传输代价、融合格罗莫夫-瓦瑟斯坦最优传输、薛定谔桥流匹配动力学拟合、以及均值漂移势能引导与四阶龙格-库塔求解器的完整推导过程。
+本章将详细介绍 \textbf{SpaLineage-OT} 的数学架构，包含黎曼测地线几何约束、非对称速度引导传输代价、融合格罗莫夫-瓦瑟斯坦最优传输、薛定谔桥流匹配动力学拟合、以及均值漂移势能引导与四阶龙格-库塔求解器的完整推导过程。整体算法架构和流水线系统如图\ref{fig:fig9_flowchart}所示。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig9_flowchart.png}
+    \caption{SpaLineage-OT 系统架构与全局计算流水线原理图。系统包含数据预处理（Stage 1）、代价矩阵与有向 Fused Gromov-Wasserstein 求解（Stage 2）、神经网络漂移场 SBFM 拟合（Stage 3）以及均值漂移引导的 RK4 动力学推理评估（Stage 4）。}
+    \label{fig:fig9_flowchart}
+\end{figure}
+
+如图\ref{fig:fig9_flowchart}所示，SpaLineage-OT 形成了一个紧密的闭环。从 Stage 1 的数据预处理和 RNA 速度计算，到 Stage 2 在黎曼网格约束下计算非对称有向传输矩阵，为 Stage 3 提供了精确的流匹配初终配对边界条件。在此基础上，神经网络 DriftMLP 通过流匹配损失和速度对齐损失拟合出物理合理的连续时间漂移场，最后在 Stage 4 中借助均值漂移势能负梯度进行轨迹纠偏，利用 RK4 高精度求解，最终在 MOSTA 数据集上实现高精度的轨迹推断。这一体系在物理机理和数学严谨性上达成了高度的自洽与完备。
 
 \section{黎曼测地线几何约束 (Riemannian Geodesic Graph)}
-在传统的空间转录组对齐与轨迹推断方法中，空间距离计算默认采用欧几里得度量。然而，生物组织通常具有复杂的拓扑结构与物理空腔（如图\ref{fig:fig9_flowchart}所示的脑室等真空屏障）。为了强制细胞最优传输耦合贴合实际的组织轮廓，我们通过以下步骤构建黎曼几何图约束：
+在传统的空间转录组对齐与轨迹推断方法中，空间距离计算默认采用欧几里得度量。然而，生物组织通常具有复杂的拓扑结构与物理空腔（如图\ref{fig:fig2_path_detour}所示的脑室等真空屏障）。为了强制细胞最优传输耦合贴合实际的组织轮廓，我们通过以下步骤构建黎曼几何图约束：
 
 \subsection{Delaunay 空间流形网格图构建}
 为了建立细胞之间的空间邻接关系，我们首先在时间点 $t_k$ 的细胞空间坐标上执行 Delaunay 三角剖分（Delaunay Triangulation）\cite{Delaunay1934}。所得三角网格图记为 $G_d = (\mathcal{V}, \mathcal{E}_d)$，其中顶点集合 $\mathcal{V}$ 为该时间点的所有细胞，$\mathcal{E}_d$ 为三角边集。

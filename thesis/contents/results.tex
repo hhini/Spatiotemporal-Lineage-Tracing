@@ -20,16 +20,18 @@
     \centering
     \caption{不同算法在时空谱系追踪 Hold-out 验证中的指标对照}
     \label{tab:benchmarks}
+    \resizebox{\textwidth}{!}{%
     \begin{tabular}{llcccc}
         \toprule
-        模型 / 算法 & 传输代价计算模式 & 轨迹积分插值方法 & 能量距离 (ED) $\downarrow$ & 屏障穿越率 (BCR) $\uparrow$ & 物理真实性评价 \\
+        模型 / 算法 & 传输代价计算模式 & 轨迹积分插值方法 & 能量距离 (ED) $\downarrow$ & 屏障穿越率 (BCR) $\uparrow$ & 物理真实性 \\
         \midrule
-        \textbf{无迁移基准} & - & 不移动 (保持 E9.5 坐标) & 16.6852 & - & - \\
+        \textbf{无迁移基准} & - & 不移动 (保持 E9.5) & 16.6852 & - & - \\
         \textbf{WOT} & 表达谱欧氏距离 & 欧氏空间直线插值 & 3.8354 & 86.30\% & 低 \\
         \textbf{Moscot} & 表达谱 + 空间欧氏代价 & 欧氏空间直线插值 & 3.4723 & 80.60\% & 低 \\
-        \textbf{\bf{SpaLineage-OT} (本模型)} & 速度有向 + 黎曼测地线 & 薛定谔桥流匹配 (RK4) & \bf{2.9351} & \bf{91.40\%} & \bf{高} \\
+        \textbf{SpaLineage-OT (本模型)} & 速度有向 + 黎曼测地线 & 薛定谔桥流匹配 (RK4) & \bf{2.9351} & \bf{91.40\%} & \bf{高} \\
         \bottomrule
-    \end{tabular}
+    \end{tabular}%
+    }
 \end{table}
 
 定量数据表明，所有最优传输方法均显著优于不移动的基准模型（ED 从 16.68 降低到 3 左右）。相较于标准 Fused Gromov-Wasserstein 算法 Moscot，SpaLineage-OT 的能量距离降低了 15.5\%（从 3.4723 降至 2.9351），且其屏障区域穿越率 BCR 达到了 91.40\%，这证明了黎曼几何测地线距离约束和 SBFM 连续流拟合对于恢复空间形态的极强优势。
@@ -127,14 +129,4 @@
 
 图\ref{fig:fig8_velocity_alignment}显示，SpaLineage-OT 的余弦相似度曲线（实线）显著偏向右侧的 1.0。其余弦相似度均值达 0.76，而 Moscot 仅为 0.42，WOT 为 0.35。这强有力地证明了，非对称速度惩罚与流匹配中的先验物理损失有效地指导了模型，在预测宏观细胞空间迁移的同时，也完美兼容了微观的基因转录速度方向，实现了多尺度发育的一致性。
 
-\section{全局计算流水线与系统架构总结}
-图\ref{fig:fig9_flowchart}为本论文的全局系统架构和流水线原理图。
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=1.0\textwidth]{fig9_flowchart.png}
-    \caption{SpaLineage-OT 系统架构与全局计算流水线原理图。系统包含数据预处理（Stage 1）、代价矩阵与有向 Fused Gromov-Wasserstein 求解（Stage 2）、神经网络漂移场 SBFM 拟合（Stage 3）以及均值漂移引导的 RK4 动力学推理评估（Stage 4）。}
-    \label{fig:fig9_flowchart}
-\end{figure}
-
-如图\ref{fig:fig9_flowchart}所示，SpaLineage-OT 形成了一个紧密的闭环。从 Stage 1 的数据预处理和 RNA 速度计算，到 Stage 2 在黎曼网格约束下计算非对称有向传输矩阵，为 Stage 3 提供了精确的流匹配初终配对边界条件。在此基础上，神经网络 DriftMLP 通过流匹配损失和速度对齐损失拟合出物理合理的连续时间漂移场，最后在 Stage 4 中借助均值漂移势能负梯度进行轨迹纠偏，利用 RK4 高精度求解，最终在 MOSTA 数据集上实现高精度的轨迹推断。这一体系在物理机理和数学严谨性上达成了高度的自洽与完备。
