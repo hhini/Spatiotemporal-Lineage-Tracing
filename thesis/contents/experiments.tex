@@ -1,0 +1,78 @@
+% !TEX root = ../main.tex
+
+\chapter{实验设计与数据预处理}
+\label{ch:experiments}
+
+为了系统地评估 \textbf{SpaLineage-OT} 的预测精度与生物学合理性，我们使用真实的小鼠胚胎发育时空转录组学数据集展开了一系列数值模拟与轨迹推断实验。本章主要介绍实验使用的数据集来源、核心预处理流程（包括 PCA 降维、RNA 速度估计与扩散伪时间分析）以及模型神经网络的架构与超参数配置。
+
+\section{数据集来源与背景 (MOSTA Dataset)}
+本研究所使用的数据来源于小鼠器官发育时空转录组图谱数据集（Spatiotemporal Transcriptomic Atlas of Mouse Organogenesis, MOSTA）\cite{Chen2022}。该数据集利用华大基因自主研发的高分辨率时空测序技术 Stereo-seq 进行测序，能够以纳米级的分辨率捕获细胞的空间位置，并在单细胞分辨率下解析基因的表达变化。
+
+在小鼠胚胎发生阶段，胚胎的形态和组织结构在时间维度上经历着剧烈的动态变迁。本研究选取了发育中期的三个关键时间点切片：
+\begin{enumerate}
+    \item \textbf{E9.5 胚胎切片}：代表早期器官形成的起点，包含约 14,000 个细胞，主要用于谱系追踪的初始状态。
+    \item \textbf{E10.5 胚胎切片}：处于发育中间过渡阶段，包含约 16,000 个细胞。在我们的“留出验证”（Hold-out Validation）实验中，该时间点的数据被隐藏，不参与任何最优传输耦合计算与模型拟合，仅用作评估轨迹推断空间重构精度的地面真值（Ground Truth）。
+    \item \textbf{E11.5 胚胎切片}：代表器官分化和发育成熟期，包含约 18,000 个细胞，主要用于谱系追踪的终止状态。
+\end{enumerate}
+三个切片均进行了标准的基因表达计数矩阵构建，同时保留了高精度的二维空间物理坐标 $(X, Y)$，单位为微米 ($\mu$m)。
+
+\section{核心预处理流程}
+在进行动力学模型训练前，我们使用 `scanpy` 和定制脚本对原始 H5AD 数据进行了标准的质量控制与预处理：
+
+\subsection{表达谱特征降维与主成分分析 (PCA)}
+首先过滤掉在少于 3 个细胞中表达的低丰度基因，以及测序计数（UMIs）过低的低质量细胞。然后将基因表达矩阵按每个细胞的总计数进行归一化（Normalizing to 10,000 counts per cell），并应用 $\log(1 + \text{CPM})$ 变换。
+为了减小表达谱特征的高维冗余并提高后续最优传输的计算稳定性，我们使用主成分分析（Principal Component Analysis, PCA）方法，筛选出表达矩阵的前 50 个主成分，用于构建高维的基因表达状态空间。
+
+\subsection{RNA 速度场计算 (RNA Velocity)}
+单细胞 RNA 速度反映了未剪切（Unspliced）与已剪切（Spliced）mRNA 转录本的丰度比例关系，能直接指示细胞在转录空间内的瞬时变化趋势。
+我们使用基于动力学模型的 `scvelo` 软件\cite{Bergen2020}进行 RNA 速度估计。
+首先计算每个细胞中剪切与未剪切的转录本计数，随后利用反应动力学常微分方程：
+\begin{equation}
+    \frac{\dd u(t)}{\dd t} = \alpha_0 - \beta_0 u(t), \quad \frac{\dd s(t)}{\dd t} = \beta_0 u(t) - \gamma_0 s(t)
+\end{equation}
+拟合每个基因的转录率 $\alpha_0$、剪切率 $\beta_0$ 以及降解率 $\gamma_0$。通过最小二乘法估计每个细胞在 $D$ 维表达空间上的瞬时基因表达速度。随后，利用基于转录流形的局部相关性投影方法，将高维速度矢量 $\vec{v}_i \in \mathbb{R}^D$ 投射到二维空间物理坐标轴上，生成反映物理迁移方向的空间生物速度矢量 $\vec{V}_i \in \mathbb{R}^2$。这一速度矢量是构建非对称最优传输传输代价（AS-FGW）和物理先验损失函数的核心输入。
+
+\subsection{扩散伪时间分析 (Pseudotime Analysis)}
+为了在无向最优传输中引入全局的发育进程约束，我们计算了单细胞的扩散伪时间（Diffusion Pseudotime, DPT）\cite{Bergen2020}。DPT 基于随机游走与扩散图机制，量化每个细胞距离发育起始状态的转录距离。
+在实验中，我们选择 E9.5 具有典型未分化特征的早期祖细胞作为根细胞（Root Cell），计算全数据集的 DPT，并将所得伪时间数值作为最优传输耦合求解时的重要时序正则项。
+
+\section{网络架构与训练参数设置}
+
+\subsection{神经网络 DriftMLP 架构}
+为了拟合连续时间的细胞漂移矢量场，我们构建了一个全连接神经网络 DriftMLP，其输入为时空三维联合特征 $(X, Y, t)$，输出为预测的二维瞬时速度向量 $u_\theta(x, t) \in \mathbb{R}^2$。网络结构设计如下：
+\begin{itemize}
+    \item \textbf{输入层}：接收时空特征坐标 $(X_t, Y_t, t) \in \mathbb{R}^3$。
+    \item \textbf{隐藏层 1}：128 个神经元，搭配 GELU 激活函数，包含 Layer Normalization 以加速收敛。
+    \item \textbf{隐藏层 2}：128 个神经元，搭配 GELU 激活函数。
+    \item \textbf{隐藏层 3}：64 个神经元，搭配 GELU 激活函数。
+    \item \textbf{输出层}：2 个神经元，不使用激活函数，直接输出二维空间速度场矢量。
+\end{itemize}
+网络总参数量约为 $25,000$。小巧的设计有效地防止了在稀疏时空转录组上的过拟合。
+
+\subsection{超参数与计算细节配置}
+模型训练使用 PyTorch 框架，主要参数配置见表\ref{tab:hyperparams}。
+
+\begin{table}[H]
+    \centering
+    \caption{SpaLineage-OT 核心训练与计算超参数配置}
+    \label{tab:hyperparams}
+    \begin{tabular}{lcc}
+        \toprule
+        参数名称 & 参数符号 & 默认设定值 \\
+        \midrule
+        Delaunay 截断最大物理边长 & $d_{\text{max}}$ & 15.0 \, $\mu$m \\
+        KDE 形态阻抗惩罚系数 & $\gamma$ & 3.0 \\
+        速度引导余弦惩罚权重 & $\beta$ & 0.5 \\
+        格罗莫夫-瓦瑟斯坦结构权重 & $\alpha$ & 0.4 \\
+        SBFM 布朗桥涨落标准差 & $\sigma$ & 0.1 \\
+        漂移场网络训练的学习率 & $\text{lr}$ & $1 \times 10^{-3}$ \\
+        物理先验对齐损失系数 & $\lambda_{\text{phy}}$ & 0.2 \\
+        均值漂移势能引导力强度 & $\eta$ & 0.4 \\
+        真空区密度下溢掩膜阈值 & $\tau$ & $1 \times 10^{-4}$ \\
+        RK4 积分仿真时间步长 & $\Delta t$ & 0.05 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+训练过程中，我们采用 AdamW 优化器，学习率设为 $10^{-3}$，批量大小（Batch Size）为 256。我们在单个 NVIDIA RTX 4090 GPU 上进行了训练，训练周期为 200 个 Epoch，耗时约 4 分钟，表现出极高的拟合效率。
+通过以上严密的实验设计与高保真的数学拟合，我们完成了对时空转录组发育连续轨道的精确建模。

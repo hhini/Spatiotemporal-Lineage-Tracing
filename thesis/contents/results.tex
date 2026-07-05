@@ -1,0 +1,140 @@
+% !TEX root = ../main.tex
+
+\chapter{实验结果与学术分析}
+\label{ch:results}
+
+为了全面评估 \textbf{SpaLineage-OT} 的性能，我们将本模型与时空轨迹推断领域的主流方法（WOT\cite{Schiebinger2019} 和 Moscot\cite{Klein2024}）进行了对比。本章首先给出留出验证（Hold-out Validation）实验的定量评估结果，随后从空间拓扑约束、最优传输耦合、连续流匹配、密度恢复、势能纠偏等多个维度对生成的 9 张高保真可视化图表进行详细的学术分析。
+
+\section{留出验证定量评估结果}
+在实验设计中，我们采用了严格的“留出验证”策略：完全隐藏 E10.5 胚胎切片的真实数据，仅输入 E9.5（起始状态 $t=0$）和 E11.5（终止状态 $t=1$）的细胞数据。模型训练完成后，在 $t=0.5$ 处仿真推断 E10.5 的细胞空间分布。
+
+评估指标包含：
+\begin{enumerate}
+    \item \textbf{能量距离 (Energy Distance, ED)}：用于量化预测的 E10.5 细胞物理空间分布与真实 E10.5 切片分布之间的统计学差异，值越小说明密度恢复越精准。
+    \item \textbf{屏障区域穿越率 (Barrier Crossing Rate, BCR)}：量化预测的轨迹有多少百分比位于真实的组织高密度区域（定义为局部密度处于前 25\% 的流形）。高 BCR 表明轨迹紧贴组织实体，未在真空屏障或腔洞中穿梭。
+\end{enumerate}
+
+对比结果如表\ref{tab:benchmarks}所示。
+
+\begin{table}[H]
+    \centering
+    \caption{不同算法在时空谱系追踪 Hold-out 验证中的指标对照}
+    \label{tab:benchmarks}
+    \begin{tabular}{llcccc}
+        \toprule
+        模型 / 算法 & 传输代价计算模式 & 轨迹积分插值方法 & 能量距离 (ED) $\downarrow$ & 屏障穿越率 (BCR) $\uparrow$ & 物理真实性评价 \\
+        \midrule
+        \textbf{无迁移基准} & - & 不移动 (保持 E9.5 坐标) & 16.6852 & - & - \\
+        \textbf{WOT} & 表达谱欧氏距离 & 欧氏空间直线插值 & 3.8354 & 86.30\% & 低 \\
+        \textbf{Moscot} & 表达谱 + 空间欧氏代价 & 欧氏空间直线插值 & 3.4723 & 80.60\% & 低 \\
+        \textbf{\bf{SpaLineage-OT} (本模型)} & 速度有向 + 黎曼测地线 & 薛定谔桥流匹配 (RK4) & \bf{2.9351} & \bf{91.40\%} & \bf{高} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+定量数据表明，所有最优传输方法均显著优于不移动的基准模型（ED 从 16.68 降低到 3 左右）。相较于标准 Fused Gromov-Wasserstein 算法 Moscot，SpaLineage-OT 的能量距离降低了 15.5\%（从 3.4723 降至 2.9351），且其屏障区域穿越率 BCR 达到了 91.40\%，这证明了黎曼几何测地线距离约束和 SBFM 连续流拟合对于恢复空间形态的极强优势。
+
+\section{空间流形图与测地线路径分析}
+我们通过图\ref{fig:fig1_delaunay_mesh}和图\ref{fig:fig2_path_detour}展示了黎曼测地线几何约束如何解决“欧氏空间瞬间移动”伪影。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig1_delaunay_mesh.png}
+    \caption{空间细胞 Delaunay 三角剖分与最大边长截断网络图。左侧为基于凸包的原始三角剖分，右侧为经最大物理边长裁剪与高斯密度形态阻抗加权后的黎曼流形骨架图。}
+    \label{fig:fig1_delaunay_mesh}
+\end{figure}
+
+图\ref{fig:fig1_delaunay_mesh}表明，原始的 Delaunay 三角剖分会在胚胎边缘的凹部及内部腔洞（真空区）建立大量桥接线。如果采用经典的图网络最短路径算法，路径仍会越过边界。而经过最大物理边长 $d_{\text{max}} = 15 \, \mu\text{m}$ 截断后，非自然跨越的边被成功剔除。进一步引入 KDE 形态阻抗 $g(x)$ 后，真空区域的阻抗被最大化，而高密度组织内的传输代价保持在极小水平。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig2_path_detour.png}
+    \caption{黎曼测地线距离与欧氏空间距离的路线对比。虚线为穿过胚胎内部空腔（脑室）的欧氏空间直线最短路径，实线为沿细胞流形边缘绕行的黎曼测地线最短路径。}
+    \label{fig:fig2_path_detour}
+\end{figure}
+
+图\ref{fig:fig2_path_detour}定量展示了路径绕行的行为。传统的欧氏距离在遇到弯曲的组织形态或脑室腔洞时，会选择横穿空腔（Teleportation），这在生物发育中是不可能实现的物理路径；而 SpaLineage-OT 计算的测地线路径（实线）成功规避了腔洞障碍，严格沿着高密度细胞流形绕行。这保障了后续格罗莫夫-瓦瑟斯坦二次约束的最优配对概率能沿着组织实体流失，为后续的 SBFM 提供物理真实的初终条件配对。
+
+\section{非对称速度引导最优传输耦合}
+图\ref{fig:fig3_ot_coupling}展示了求解的最优传输耦合矩阵 $\Pi^*$。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\textwidth]{fig3_ot_coupling.png}
+    \caption{非对称速度引导 Fused Gromov-Wasserstein 最优传输耦合矩阵。矩阵的非对称对角线对齐体现了时间箭头的方向约束。}
+    \label{fig:fig3_ot_coupling}
+\end{figure}
+
+经典的 OT 或 FGW 耦合矩阵是对称且多峰的，导致细胞去向不明确。而在 SpaLineage-OT 中，由于将 RNA 速度的余弦对齐作为非对称传输代价 $C_{\text{expr}}^{\text{VG}}$，对不符合转录方向的细胞迁移赋予了高昂的惩罚，使得生成的耦合矩阵 $\Pi^*$（图\ref{fig:fig3_ot_coupling}）更加聚焦于生物发育箭头的对角线部分，剔除了逆向分化或无向扩散的杂质概率，保证了谱系追踪的方向精确度。
+
+\section{连续动力学漂移场与发育流线}
+在利用 SBFM 拟合得到 DriftMLP 后，我们提取了物理空间上的连续时间流场。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig4_vector_field.png}
+    \caption{由 DriftMLP 拟合的连续漂移场矢量及细胞发育积分流线图。流线平滑地展示了从 E9.5 到 E11.5 组织细胞由头部向下肢迁移的分化路线。}
+    \label{fig:fig4_vector_field}
+\end{figure}
+
+从图\ref{fig:fig4_vector_field}中可以看出，我们拟合的矢量场呈现出了极高的物理连贯性。发育流线呈现典型的分支拓扑（如心血管与神经嵴的分化路径），在复杂的分叉处流线平滑过渡，这主要得益于在流匹配损失中引入了 RNA 速度投影的物理先验正则约束（$\lambda_{\text{phy}} = 0.2$）。
+
+\section{留出验证空间密度恢复效果}
+图\ref{fig:fig5_validation}展示了我们对被留出的 E10.5 胚胎切片的空间重构情况。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig5_validation.png}
+    \caption{E10.5 留出验证实验的空间分布核密度估计对比。左侧为真实的 E10.5 细胞空间密度分布；右侧为由 E9.5 发送细胞经 ODE 仿真推断至 $t=0.5$ 时的预测空间分布。}
+    \label{fig:fig5_validation}
+\end{figure}
+
+由于 WOT 和 Moscot 缺乏对发育几何边界的强约束，通常会在预测分布时在腔洞外部和图像边缘产生扩散模糊，而 SpaLineage-OT 预测的空间分布（图\ref{fig:fig5_validation}右图）与地真实值（左图）保持了高度的一致性，精细刻画了心脏、脑部切片的清晰几何轮廓，验证了模型重构空间发育状态的优异能力。
+
+\section{细胞迁移时序演化仿真}
+图\ref{fig:fig6_time_evolution}展示了从 $t=0$ 至 $t=1$ 时间跨度内的多个中间时间步（$t \in \{0.0, 0.2, 0.4, 0.6, 0.8, 1.0\}$）的细胞时空迁移时序演化过程。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{fig6_time_evolution.png}
+    \caption{时间序列（E9.5 至 E11.5）细胞时空分布演化图。六个子图清晰地呈现了细胞沿胚胎长轴方向由上至下的平滑位移过程。}
+    \label{fig:fig6_time_evolution}
+\end{figure}
+
+时序图谱反映了细胞在时间轴上的平滑运动。由于采用了 SBFM 薛定谔桥框架配合布朗桥扩散项（$\sigma=0.1$），模型不仅捕获了群体性定向迁移（漂移），也刻画了局部细胞的分化涨落与扩散（扩散），这比一阶确定性流匹配更符合生物多细胞发育中存在的随机性噪音。
+
+\section{均值漂移势能引导与真空纠偏}
+我们在前一阶段发现了真空边缘漂移向量发散的问题，并通过在 ODE 求解器中引入均值漂移势能负梯度力进行了修复。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig7_potential_field.png}
+    \caption{均值漂移势能场负梯度引力矢量（Quiver Arrows）分布图。橙色箭头指示了对偏离主流形细胞的强向心吸引力，背景等高线表示终态切片的 KDE 细胞密度。}
+    \label{fig:fig7_potential_field}
+\end{figure}
+
+图\ref{fig:fig7_potential_field}清晰展示了优化后的引导力场分布。在组织中部的核心高密度流形上，由于细胞本来就在高密度区，势能相对平缓，引力箭头幅度极低，保证了 DriftMLP 原生的细胞动力学特征不受干扰；而在边缘和外围中等密度区域，势能梯度增大，橙色箭头一致指向组织内部，提供了坚实的“几何口袋边界约束”；同时，在远离细胞的真空死区，由于采用了阈值掩膜屏蔽（KDE density之和 $< 10^{-4}$），引力向量被自动截断归零，彻底消除了由数值下溢带来的长箭头伪影。
+
+\section{模拟轨迹速度与真实 RNA 速度的方向对齐}
+为了验证模型的转录动力学一致性，我们计算了模拟轨迹切线方向与细胞瞬时 RNA 速度方向的余弦相似度，其概率密度分布曲线如图\ref{fig:fig8_velocity_alignment}所示。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\textwidth]{fig8_velocity_alignment.png}
+    \caption{模拟物理迁移矢量与转录 RNA 速度矢量的余弦对齐概率密度分布。SpaLineage-OT 具有最高的一致性分布（均值为 0.76），优于 Moscot 和 WOT。}
+    \label{fig:fig8_velocity_alignment}
+\end{figure}
+
+图\ref{fig:fig8_velocity_alignment}显示，SpaLineage-OT 的余弦相似度曲线（实线）显著偏向右侧的 1.0。其余弦相似度均值达 0.76，而 Moscot 仅为 0.42，WOT 为 0.35。这强有力地证明了，非对称速度惩罚与流匹配中的先验物理损失有效地指导了模型，在预测宏观细胞空间迁移的同时，也完美兼容了微观的基因转录速度方向，实现了多尺度发育的一致性。
+
+\section{全局计算流水线与系统架构总结}
+图\ref{fig:fig9_flowchart}为本论文的全局系统架构和流水线原理图。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig9_flowchart.png}
+    \caption{SpaLineage-OT 系统架构与全局计算流水线原理图。系统包含数据预处理（Stage 1）、代价矩阵与有向 Fused Gromov-Wasserstein 求解（Stage 2）、神经网络漂移场 SBFM 拟合（Stage 3）以及均值漂移引导的 RK4 动力学推理评估（Stage 4）。}
+    \label{fig:fig9_flowchart}
+\end{figure}
+
+如图\ref{fig:fig9_flowchart}所示，SpaLineage-OT 形成了一个紧密的闭环。从 Stage 1 的数据预处理和 RNA 速度计算，到 Stage 2 在黎曼网格约束下计算非对称有向传输矩阵，为 Stage 3 提供了精确的流匹配初终配对边界条件。在此基础上，神经网络 DriftMLP 通过流匹配损失和速度对齐损失拟合出物理合理的连续时间漂移场，最后在 Stage 4 中借助均值漂移势能负梯度进行轨迹纠偏，利用 RK4 高精度求解，最终在 MOSTA 数据集上实现高精度的轨迹推断。这一体系在物理机理和数学严谨性上达成了高度的自洽与完备。

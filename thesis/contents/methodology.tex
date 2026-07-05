@@ -1,0 +1,157 @@
+% !TEX root = ../main.tex
+
+\chapter{算法原理与数学建模}
+\label{ch:methodology}
+
+在时空单细胞谱系追踪任务中，我们观测到一系列在时间点 $t \in \{t_0, t_1, \dots, t_T\}$ 处静态采样的空间转录组数据集。对于任意时间点 $t_k$，细胞集合表示为 $\mathcal{X}(t_k) = \{(x_i, y_i) \}_{i=1}^{N_k}$，其中 $x_i \in \mathbb{R}^2$（或 $\mathbb{R}^3$）表示细胞的空间坐标，$y_i \in \mathbb{R}^D$ 表示细胞的基因表达特征（例如前 50 维 PCA 缩放值）。此外，通过转录动力学分析，我们还可以计算出每个细胞的 RNA 速度矢量 $\vec{V}_i \in \mathbb{R}^2$。
+
+本章将详细介绍 \textbf{SpaLineage-OT} 的数学架构，包含黎曼测地线几何约束、非对称速度引导传输代价、融合格罗莫夫-瓦瑟斯坦最优传输、薛定谔桥流匹配动力学拟合、以及均值漂移势能引导与四阶龙格-库塔求解器的完整推导过程。
+
+\section{黎曼测地线几何约束 (Riemannian Geodesic Graph)}
+在传统的空间转录组对齐与轨迹推断方法中，空间距离计算默认采用欧几里得度量。然而，生物组织通常具有复杂的拓扑结构与物理空腔（如图\ref{fig:fig9_flowchart}所示的脑室等真空屏障）。为了强制细胞最优传输耦合贴合实际的组织轮廓，我们通过以下步骤构建黎曼几何图约束：
+
+\subsection{Delaunay 空间流形网格图构建}
+为了建立细胞之间的空间邻接关系，我们首先在时间点 $t_k$ 的细胞空间坐标上执行 Delaunay 三角剖分（Delaunay Triangulation）\cite{Delaunay1934}。所得三角网格图记为 $G_d = (\mathcal{V}, \mathcal{E}_d)$，其中顶点集合 $\mathcal{V}$ 为该时间点的所有细胞，$\mathcal{E}_d$ 为三角边集。
+
+由于 Delaunay 三角剖分是一种基于凸包的剖分方式，在组织的凹轮廓边缘或内部空腔（即不含细胞的真空物理屏障区域）仍会生成连接线。为了消除这些不合常理的“桥接”，我们设置了最大边长截断门限（Maximum Edge Length Clipping）$d_{\text{max}}$。对于任意边 $e = (u, v) \in \mathcal{E}_d$，若两点间的欧几里得距离超过 $d_{\text{max}}$，则将该边从图结构中剔除。修剪后的邻接边集为：
+\begin{equation}
+    \mathcal{E} = \{ (u, v) \in \mathcal{E}_d \mid \|x_u - x_v\|_2 \le d_{\text{max}} \}
+\end{equation}
+
+\subsection{形态阻抗度量与测地线路径求解}
+仅进行边长截断仍不足以完全阻断低密度过渡区的不合规传输。为此，我们引入了空间形态阻抗（Morphological Impedance）机制。
+首先，基于核密度估计（Kernel Density Estimation, KDE）\cite{Parzen1962}，我们计算空间任意点 $x$ 处的细胞局部概率密度 $f(x)$：
+\begin{equation}
+    f(x) = \frac{1}{N \cdot h^2} \sum_{i=1}^N K\left(\frac{x - x_i}{h}\right)
+\end{equation}
+其中 $K(\cdot)$ 为标准高斯核函数，$h$ 为自适应带宽，稳定在空间距离的特征尺度上。
+形态阻抗 $g(x)$ 刻画了细胞穿越不同密度区域时的阻力大小，定义为关于密度的指数衰减函数：
+\begin{equation}
+    g(x) = \exp\left(-\gamma \cdot \frac{f(x)}{\max_z f(z)}\right)
+\end{equation}
+其中 $\gamma > 0$ 是控制阻抗敏感度的惩罚系数。当某区域细胞密度极低（如发育空腔或真空区，即 $f(x) \to 0$）时，阻抗 $g(x) \to 1$；当处于细胞密集的组织内部时，$g(x)$ 指数降低趋近于 $e^{-\gamma}$。
+
+对于图 $G = (\mathcal{V}, \mathcal{E})$ 中的任意连接边 $e = (u, v)$，我们将该边的几何距离与两点中点处的形态阻抗相乘，定义其加权阻抗长度 $w(e)$：
+\begin{equation}
+    w(e) = \|x_u - x_v\|_2 \cdot g\left(\frac{x_u + x_v}{2}\right)
+\end{equation}
+在此黎曼度量空间下，任意两细胞 $i, j$ 之间的黎曼测地线距离 $D_{\text{geo}}(i, j)$ 定义为在加权图 $G$ 上的最短路径长度：
+\begin{equation}
+    D_{\text{geo}}(i, j) = \min_{p \in \mathcal{P}_{ij}} \sum_{e \in p} w(e)
+\end{equation}
+其中 $\mathcal{P}_{ij}$ 表示连接顶点 $i$ 和 $j$ 的所有可能路径集合。我们在计算中采用 Dijkstra 算法\cite{Dijkstra1959}配合斐波那契堆优化，计算全源最短路径距离矩阵 $D_{\text{geo}} \in \mathbb{R}^{N \times N}$。该测地线距离代替了传统模型中的欧氏距离，消除了跨越物理真空的“瞬间移动”路径。
+
+\section{非对称速度引导传输代价 (Asymmetric Velocity-Guided Cost)}
+在多时间点谱系追踪中，最优传输需要求解一个耦合矩阵（Coupling Matrix）$\Pi$，以反映细胞从前一时间点 $t_0$ 到后一时间点 $t_1$ 的状态迁移概率。标准的最优传输依赖基因表达空间距离，导致迁移概率对称分布，无法刻画时间流向。
+
+为了赋予最优传输明确的生物时间方向，我们引入基于单细胞 RNA 速度（RNA Velocity）的非对称速度惩罚项。
+对于 $t_0$ 时刻的源细胞 $i$ 和 $t_1$ 时刻的目标细胞 $j$，两者的物理位移向量定义为：
+\begin{equation}
+    \vec{d}_{ij} = x_j - x_i
+\end{equation}
+同时，源细胞 $i$ 的生物转录速度向量为 $\vec{V}_i$。为了评估该物理位移是否与细胞自身的发育动力学方向一致，我们计算位移向量与速度矢量的余弦相似度：
+\begin{equation}
+    \cos\theta_{ij} = \frac{\vec{d}_{ij} \cdot \vec{V}_i}{\|\vec{d}_{ij}\|_2 \|\vec{V}_i\|_2 + \epsilon_0}
+\end{equation}
+其中 $\epsilon_0 = 10^{-8}$ 是防止分母为 0 的极小正数。
+
+若 $\cos\theta_{ij} \to 1$，说明细胞 $i$ 向细胞 $j$ 迁移的位移方向与其转录速度方向高度一致，表明该传输符合生物物理方向，传输代价应被降低；反之，若 $\cos\theta_{ij} < 0$，说明传输位移与生物发展方向相左，传输代价应受到惩罚。据此，我们定义非对称速度引导的传输代价矩阵 $C_{\text{expr}}^{\text{VG}} \in \mathbb{R}^{N_0 \times N_1}$：
+\begin{equation}
+    C_{\text{expr}}^{\text{VG}}(i, j) = C_{\text{base}}(i, j) + \beta \cdot (1 - \cos\theta_{ij})
+\end{equation}
+其中 $C_{\text{base}}(i, j)$ 为两细胞在基因表达高维特征空间的欧氏距离，$\beta \ge 0$ 是速度惩罚权重项。显然，$C_{\text{expr}}^{\text{VG}}(i, j)$ 在数学上是非对称的，即从 $i \to j$ 的代价与 $j \to i$ 的代价不等，为系统注入了方向性约束（Directional Arrow of Time）。
+
+\section{融合格罗莫夫-瓦瑟斯坦最优传输耦合 (G-FGW)}
+借助上述定义的非对称速度引导代价 $C_{\text{expr}}^{\text{VG}}$ 以及利用黎曼几何生成的测地线距离矩阵 $D_{\text{geo}}$，我们在融合格罗莫夫-瓦瑟斯坦（Fused Gromov-Wasserstein, FGW）理论框架下建立两时间点之间的最优耦合对齐问题\cite{Vayer2020}。
+
+设源时间点和目标时间点的细胞空间与表达联合分布为 $\mu = \sum_{i=1}^{N_0} a_i \delta_{(x_i, y_i)}$ 和 $\nu = \sum_{j=1}^{N_1} b_j \delta_{(x_j, y_j)}$，其中 $a, b$ 为经验边缘概率分布（通常初始化为均匀分布或反映细胞增殖率的权重向量）。
+我们通过求解以下最小化问题，获得物理和几何双重约束下的最优传输耦合矩阵 $\Pi^* \in \mathbb{R}^{N_0 \times N_1}$：
+\begin{equation}
+    \Pi^* = \operatorname{argmin}_{\Pi \in U(a, b)} \mathcal{D}_{\text{FGW}}(\mu, \nu; \Pi)
+\end{equation}
+其目标函数表述为：
+\begin{equation}
+    \mathcal{D}_{\text{FGW}}(\mu, \nu; \Pi) = (1 - \alpha) \sum_{i,j} C_{\text{expr}}^{\text{VG}}(i, j) \Pi_{ij} + \alpha \sum_{i,j,k,l} \left| D_{\text{geo}}^{(0)}(i, k) - D_{\text{geo}}^{(1)}(j, l) \right|^2 \Pi_{ij} \Pi_{kl}
+\end{equation}
+其中 $\Pi \in U(a, b) = \{ \Pi \ge 0 \mid \Pi \mathbf{1} = a, \Pi^T \mathbf{1} = b \}$，而 $\alpha \in [0, 1]$ 是平衡特征线性传输与结构相似性传输的超参数。由于目标函数包含二次型关联项，此优化问题在数学上属于非凸规划。我们通过交替投影与共轭梯度下降算法对其进行数值求解，最终生成的概率耦合矩阵 $\Pi^*_{ij}$ 刻画了细胞从 $t_0$ 到 $t_1$ 在真实物理流形图上的最佳迁移流向。
+
+\section{薛定谔桥流匹配动力学拟合 (Schrödinger Bridge Flow Matching)}
+虽然最优传输耦合矩阵 $\Pi^*$ 锁定了离散时间采样点之间的迁移映射，但生物分化其实是在时间维度上连续演化的。为了将离散对齐延伸至连续时间的微分路径，我们引入了生成式流匹配（Flow Matching）与薛定谔桥（Schrödinger Bridge）理论\cite{Lipman2023, Schrodinger1931}。
+
+\subsection{时空状态采样与流场插值}
+基于计算获得的最优传输耦合矩阵 $\Pi^*$，我们可以将其归一化后作为联合概率分布进行采样，抽取出成对的边界条件细胞状态 $(x_0, x_1) \sim \Pi^*$，其中 $x_0 \in \mathbb{R}^2$ 为 $t=0$ 时的空间坐标，$x_1 \in \mathbb{R}^2$ 为 $t=1$ 时对应的空间坐标。
+我们构建细胞在 $t \in [0, 1]$ 时间内的连续运动插值路径为：
+\begin{equation}
+    x_t = (1 - t) x_0 + t x_1 + \sigma(t) \cdot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I)
+\end{equation}
+其中 $\sigma(t) = \sigma \sqrt{t(1 - t)}$ 为布朗桥（Brownian Bridge）条件方差，$\sigma$ 控制了发育路径中的随机物理涨落和扩散程度。由此，细胞所满足的条件漂移速度场可显式表示为：
+\begin{equation}
+    v(x_t \mid x_0, x_1) = x_1 - x_0 + \frac{1 - 2t}{2t(1 - t)} \left( x_t - (1 - t) x_0 - t x_1 \right)
+\end{equation}
+
+\subsection{漂移网络 DriftMLP 与物理先验损失}
+我们使用参数化为多层感知机（MLP）的深度神经网络 $u_\theta(x_t, t) \in \mathbb{R}^2$ 来逼近真实的无条件漂移矢量场。网络在流匹配框架下的回归损失（Flow Matching Loss）表示为：
+\begin{equation}
+    \mathcal{L}_{\text{FM}}(\theta) = \mathbb{E}_{t, x_0, x_1, \epsilon} \left[ \| u_\theta(x_t, t) - v(x_t \mid x_0, x_1) \|_2^2 \right]
+\end{equation}
+其中 $t \sim \operatorname{Uniform}(0, 1)$。
+
+同时，为了保证神经网络所拟合的连续流场与底层的单细胞 RNA 速度相契合，我们加入物理先验正则化项（Physics-Prior Loss）。我们将局部转录空间的速度向量通过 PCA 投影至物理二维空间，记为 $\vec{V}_{\text{PCA}}(x_t)$。物理先验损失强制网络预测的漂移方向与该速度对齐：
+\begin{equation}
+    \mathcal{L}_{\text{phy}}(\theta) = \mathbb{E}_{t, x_t} \left[ 1 - \cos \langle u_\theta(x_t, t), \vec{V}_{\text{PCA}}(x_t) \rangle \right]
+\end{equation}
+其中 $\cos \langle \vec{A}, \vec{B} \rangle = \frac{\vec{A} \cdot \vec{B}}{\|\vec{A}\|_2 \|\vec{B}\|_2}$。网络整体的训练目标定义为加权联合损失函数：
+\begin{equation}
+    \mathcal{L}_{\text{total}}(\theta) = \mathcal{L}_{\text{FM}}(\theta) + \lambda_{\text{phy}} \mathcal{L}_{\text{phy}}(\theta)
+\end{equation}
+通过随机梯度下降法（AdamW 优化器）最小化 $\mathcal{L}_{\text{total}}$，即可获得在转录动力学和最优传输双重物理引导下的连续漂移速度场 $u_\theta(x, t)$。
+
+\section{均值漂移势能场纠偏引导 (Mean Shift Potential Guidance \& RK4 Solver)}
+在模型推断（Inference）阶段，对于初态细胞，我们需要数值求解常微分方程（ODE）来推导其迁移轨迹：
+\begin{equation}
+    \frac{\dd x_t}{\dd t} = u_\theta(x_t, t), \quad x_t(0) = x_0
+\end{equation}
+然而，在没有约束的情况下，复杂的组织边缘区域由于缺乏高密度细胞数据支撑，会导致神经网络预测漂移向量存在偏差甚至发散。
+
+为了克服这一数值稳定度痛点，我们设计了均值漂移势能引导机制。我们计算目标终态细胞集合 $\mathcal{X}_{\text{endpoint}}$ 的核密度势能，引导漂移轨迹紧密贴合终态流形。
+
+\subsection{势能负梯度计算}
+我们定义终态概率密度的负对数似然为均值漂移势能函数 $\Psi(z)$：
+\begin{equation}
+    \Psi(z) = -\log \left( \sum_{m=1}^M K_h(z - x_m^{\text{endpoint}}) \right)
+\end{equation}
+其中 $x_m^{\text{endpoint}} \in \mathcal{X}_{\text{endpoint}}$ 为终态样本坐标。势能的负梯度即为指向高细胞密度中心的吸引力场：
+\begin{equation}
+    -\nabla \Psi(z) = \frac{\sum_{m=1}^M \nabla K_h(z - x_m^{\text{endpoint}})}{\sum_{m=1}^M K_h(z - x_m^{\text{endpoint}})}
+\end{equation}
+根据高斯核函数 $K_h(d) \propto \exp(-\frac{\|d\|^2}{2h^2})$ 的求导性质，负梯度力可变形展开为：
+\begin{equation}
+    -\nabla \Psi(z) = \frac{1}{h^2} \left[ \frac{\sum_{m=1}^M x_m^{\text{endpoint}} K_h(z - x_m^{\text{endpoint}})}{\sum_{m=1}^M K_h(z - x_m^{\text{endpoint}})} - z \right]
+\end{equation}
+中括号内部的表达式即为经典的均值漂移（Mean Shift）向量，指示了当前点 $z$ 指向高密度区域中心的相对位移向量。
+
+\subsection{真空区数值过滤与掩膜机制}
+当细胞演化到没有细胞分布的真空区（如距离组织极远或处于空腔中央）时，密度估计值 $\sum_{m=1}^M K_h(z - x_m^{\text{endpoint}})$ 会由于下溢（Underflow）趋近于极小值，此时上式分母项的数值下溢会导致势能力向原点或无穷大剧烈发散。
+为了保证数值稳定性，我们设计了空间密度阈值掩膜机制。当且仅当细胞当前所处位置的密度之和大于给定阀值 $\tau$ 时，才激活该引力惩罚：
+\begin{equation}
+    F_{\text{pot}}(z) = \begin{cases}
+        -\nabla \Psi(z), & \text{若 } \sum_{m=1}^M K_h(z - x_m^{\text{endpoint}}) > \tau \\
+        0, & \text{否则}
+    \end{cases}
+\end{equation}
+我们设定阈值 $\tau = 10^{-4}$。在引入这一引导力后，修正后的连续时间动力学微分方程表示为：
+\begin{equation}
+    \frac{\dd x_t}{\dd t} = v(x_t, t) = u_\theta(x_t, t) + \eta \cdot F_{\text{pot}}(x_t)
+\end{equation}
+其中 $\eta \ge 0$ 是势能引导力的强度系数。当细胞偏离主流形时，这一引力场负梯度会产生一个弹性的向心拉力，将其拉回组织流形表面（如图\ref{fig:fig7_potential_field}所示的边界引力箭头引导效果）。
+
+\subsection{四阶龙格-库塔 (RK4) 求解}
+为了实现高精度的数值积分，我们弃用了一阶欧拉（Euler）折线积分，引入具有四阶代数精度的 Runge-Kutta 积分器（RK4）\cite{Butcher2016}。在时间间隔内，积分迭代方程如下：
+\begin{align}
+    k_1 &= v(x_n, t_n) \\
+    k_2 &= v\left(x_n + \frac{\Delta t}{2} k_1, \, t_n + \frac{\Delta t}{2}\right) \\
+    k_3 &= v\left(x_n + \frac{\Delta t}{2} k_2, \, t_n + \frac{\Delta t}{2}\right) \\
+    k_4 &= v\left(x_n + \Delta t k_3, \, t_n + \Delta t\right) \\
+    x_{n+1} &= x_n + \frac{\Delta t}{6} \left( k_1 + 2k_2 + 2k_3 + k_4 \right)
+\end{align}
+其中步长设定为 $\Delta t = 0.05$。通过以上物理势能场纠偏引导和 RK4 求解器的配合，我们能够高保真地还原单细胞在复杂几何形态约束下的空间运动曲线。
