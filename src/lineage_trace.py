@@ -313,11 +313,12 @@ def get_mean_shift_potential_fn(X_real_spatial, sigma=20.0, eta=0.1):
         dists_sq = torch.cdist(x_current, X_real_t) ** 2
         # Gaussian weights: shape (N, M)
         weights = torch.exp(-dists_sq / (2.0 * sigma ** 2))
-        weights_sum = torch.sum(weights, dim=1, keepdim=True) + 1e-12
-        # Weighted coordinates: shape (N, 2)
-        weighted_coords = torch.matmul(weights, X_real_t) / weights_sum
+        weights_sum = torch.sum(weights, dim=1, keepdim=True)
+        # Mask out coordinates where density is extremely low to prevent numerical underflow/pull to origin
+        mask = (weights_sum > 1e-4).float()
+        weighted_coords = torch.matmul(weights, X_real_t) / (weights_sum + 1e-12)
         # Mean shift vector: shape (N, 2)
-        mean_shift = weighted_coords - x_current
+        mean_shift = (weighted_coords - x_current) * mask
         return eta * mean_shift
     return potential_grad_fn
 

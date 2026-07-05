@@ -141,13 +141,21 @@ def plot_potential_guidance_field(adata, output_dir):
     cbar.set_label('Reference Embryonic Tissue Density (KDE Log-Likelihood)', fontsize=11, labelpad=8)
     
     # Draw potential guidance vectors (quiver)
-    # We normalize forces to make arrows clearly visible and uniform
+    # We normalize forces to make arrows clearly visible and uniform in length
     force_magnitude = np.sqrt(U_force**2 + V_force**2)
-    # Mask out quivers in regions of extremely low force to avoid clutter
-    mask = force_magnitude > 1e-4
+    U_norm = U_force / (force_magnitude + 1e-8)
+    V_norm = V_force / (force_magnitude + 1e-8)
     
-    ax.quiver(X[mask], Y[mask], U_force[mask], V_force[mask], color='#D35400', 
-              scale=10.0, width=0.0035, headwidth=3, headlength=5, alpha=0.85, label='Boundary Guidance Pull $\\nabla \\Psi$')
+    # Mask out quivers in empty space (vacuum regions) where cell density is extremely low
+    density_mask = Z > 0.03 * Z.max()
+    
+    # Scale arrow length proportional to force magnitude relative to 95th percentile
+    max_f = np.percentile(force_magnitude[density_mask], 95)
+    U_plot = U_norm * (np.minimum(force_magnitude, max_f) / max_f)
+    V_plot = V_norm * (np.minimum(force_magnitude, max_f) / max_f)
+    
+    ax.quiver(X[density_mask], Y[density_mask], U_plot[density_mask], V_plot[density_mask], color='#D35400', 
+              scale=30.0, width=0.0025, headwidth=3, headlength=5, alpha=0.85, label='Boundary Guidance Pull $\\nabla \\Psi$')
               
     # Add cells
     ax.scatter(coords[:, 0], coords[:, 1], color='#2C3E50', s=1.5, alpha=0.15, zorder=0)
